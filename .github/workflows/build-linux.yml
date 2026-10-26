@@ -1,0 +1,30 @@
+name: Build Linux AppImage
+
+# Manual only: Actions tab → "Build Linux AppImage" → Run workflow.
+# One file that runs on most distros, Bazzite included:
+#   chmod +x Trip-Ledger-*.AppImage && ./Trip-Ledger-*.AppImage
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run dist:linux
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Trip-Ledger-linux
+          path: release/*.AppImage
+          if-no-files-found: error

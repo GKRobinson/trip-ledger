@@ -1,0 +1,23 @@
+# Dependencies and build output
+node_modules/
+dist/
+release/
+*.tsbuildinfo
+
+# Local environment / secrets — never commit these
+.env
+.env.*
+
+# Android release signing — back these up privately, never commit
+android/keystore/
+android/keystore.properties
+*.jks
+*.keystore
+*.apk
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+
+# Local copies of built apps ("Trip Ledger <version> ...")
+App Builds/

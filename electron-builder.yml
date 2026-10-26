@@ -1,0 +1,34 @@
+# Desktop packaging. `npm run dist:win` → release/Trip-Ledger-<version>-Setup.exe
+#                    `npm run dist:linux` → release/Trip-Ledger-<version>.AppImage
+# The Linux build only runs on Linux (GitHub Actions does it).
+appId: com.gkrobinson.tripledger
+productName: Trip Ledger
+directories:
+  output: release
+  buildResources: build-resources
+# Only the built web app and the Electron shell ship. Everything in
+# package.json is a devDependency (Vite bundles it), so no node_modules ship.
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+asar: true
+
+win:
+  target: nsis
+  icon: build-resources/icon.png
+nsis:
+  # Per-user install, no admin rights, no wizard. Unsigned, so Windows
+  # SmartScreen warns on first run ("More info" → "Run anyway").
+  oneClick: true
+  perMachine: false
+  artifactName: Trip-Ledger-${version}-Setup.${ext}
+  # Trips live in %APPDATA%\Trip Ledger and are kept on uninstall.
+  deleteAppDataOnUninstall: false
+
+linux:
+  target: AppImage
+  icon: build-resources/icon.png
+  category: Office
+  synopsis: Offline, private trip budget tracker
+  artifactName: Trip-Ledger-${version}.${ext}

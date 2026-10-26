@@ -1,0 +1,107 @@
+apply plugin: 'com.android.application'
+
+// Version: package.json is the single source of truth. Android only installs
+// an APK over the existing app when versionCode goes up, so it's derived from
+// the version: 1.2.3 -> 10203.
+def appVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version as String
+def versionParts = appVersion.tokenize('.').collect { it.replaceAll(/\D.*/, '') as int }
+def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+
+// Release signing, from environment variables (GitHub Actions writes the
+// keystore from secrets) or android/keystore.properties locally. Neither is
+// in git. Back the keystore up: without it, later builds can't update the
+// installed app. A release build with no key fails rather than quietly
+// producing an APK that can't be installed as an update.
+def signing = null
+if (System.getenv('TRIP_LEDGER_KEYSTORE')) {
+    signing = [
+        storeFile: file(System.getenv('TRIP_LEDGER_KEYSTORE')),
+        storePassword: System.getenv('TRIP_LEDGER_KEYSTORE_PASSWORD'),
+        keyAlias: System.getenv('TRIP_LEDGER_KEY_ALIAS'),
+        keyPassword: System.getenv('TRIP_LEDGER_KEY_PASSWORD'),
+    ]
+} else if (rootProject.file('keystore.properties').exists()) {
+    def props = new Properties()
+    rootProject.file('keystore.properties').withInputStream { props.load(it) }
+    signing = [
+        storeFile: rootProject.file(props['storeFile']),
+        storePassword: props['storePassword'],
+        keyAlias: props['keyAlias'],
+        keyPassword: props['keyPassword'],
+    ]
+}
+
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach {
+    doFirst {
+        if (signing == null) {
+            throw new GradleException('Release builds need the Trip Ledger signing key: set TRIP_LEDGER_KEYSTORE* ' +
+                'or create android/keystore.properties. For testing, build a debug APK instead (assembleDebug).')
+        }
+    }
+}
+
+android {
+    namespace = "com.gkrobinson.tripledger"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.gkrobinson.tripledger"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode appVersionCode
+        versionName appVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (signing != null) {
+                storeFile signing.storeFile
+                storePassword signing.storePassword
+                keyAlias signing.keyAlias
+                keyPassword signing.keyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (signing != null) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

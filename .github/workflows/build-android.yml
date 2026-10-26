@@ -1,0 +1,63 @@
+name: Build Android APK
+
+# Manual only: Actions tab → "Build Android APK" → Run workflow.
+# The signed APK is attached to the run as an artifact.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run android:sync
+
+      # Every release must be signed with the same key, or it won't install
+      # over the app already on the phone. No key, no build.
+      - name: Write signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TRIP_LEDGER_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Secret TRIP_LEDGER_KEYSTORE_BASE64 is missing. See CLAUDE.md, 'Android signing'."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/trip-ledger.keystore"
+
+      - name: Build signed APK
+        working-directory: android
+        env:
+          TRIP_LEDGER_KEYSTORE: ${{ runner.temp }}/trip-ledger.keystore
+          TRIP_LEDGER_KEYSTORE_PASSWORD: ${{ secrets.TRIP_LEDGER_KEYSTORE_PASSWORD }}
+          TRIP_LEDGER_KEY_ALIAS: ${{ secrets.TRIP_LEDGER_KEY_ALIAS }}
+          TRIP_LEDGER_KEY_PASSWORD: ${{ secrets.TRIP_LEDGER_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --console=plain
+
+      - name: Name the APK
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk "out/Trip-Ledger-$VERSION.apk"
+          rm -f "$RUNNER_TEMP/trip-ledger.keystore"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Trip-Ledger-android
+          path: out/*.apk
+          if-no-files-found: error

@@ -1,0 +1,5 @@
+# The repo stores LF. Shell scripts must stay LF even in a Windows checkout,
+# or ./gradlew fails ("$'\r': command not found"); batch files want CRLF.
+* text=auto
+android/gradlew text eol=lf
+*.bat text eol=crlf

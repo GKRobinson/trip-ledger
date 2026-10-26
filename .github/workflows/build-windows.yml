@@ -1,0 +1,31 @@
+name: Build Windows installer
+
+# Manual only: Actions tab → "Build Windows installer" → Run workflow.
+# Unsigned: Windows SmartScreen warns on first run ("More info" → "Run anyway").
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Trip-Ledger-windows
+          path: release/*.exe
+          if-no-files-found: error
