@@ -2,9 +2,10 @@ import { useRef, useState } from 'react';
 import { clampDate, dayNumber, formatDate, isIsoDate, tripLength } from '../domain/dates';
 import { newId } from '../domain/ids';
 import { formatMoney, parseAmount } from '../domain/money';
-import { entryTotal, spendSeries, tripStats, type SpendPoint, type TripStats } from '../domain/stats';
-import { LIMITS, budgetChangeProblems, isEditable } from '../domain/trip-ops';
-import type { BudgetChange, DayEntry, Trip, TripRecord } from '../domain/types';
+import { rateOn, rateText, toPoolCents, toTripCents } from '../domain/currency';
+import { entryTotal, poolTotal, spendSeries, tripStats, type SpendPoint, type TripStats } from '../domain/stats';
+import { LIMITS, budgetChangeProblems, isEditable, rateProblems } from '../domain/trip-ops';
+import type { BudgetChange, DayEntry, Pool, Rate, Trip, TripRecord } from '../domain/types';
 import { ConfirmButton, Header, Problems } from './common';
 import { EntryForm } from './EntryForm';
 import { dateRange, plural, signedMoney, timeAgo, tripPhase, formatDateTime } from './format';
@@ -14,6 +15,8 @@ export interface TripActions {
   deleteEntry: (date: string) => void;
   addBudgetChange: (change: BudgetChange) => Promise<boolean>;
   deleteBudgetChange: (change: BudgetChange) => void;
+  addRate: (poolId: string, rate: Rate) => Promise<boolean>;
+  deleteRate: (pool: Pool, rate: Rate) => void;
   exportTrip: () => void;
   startEditing: () => void;
   openVersions: () => void;
@@ -67,6 +70,7 @@ export function TripView({
         )}
         {series.length > 0 && <Chart trip={trip} series={series} />}
         {editable && <BudgetChangeForm trip={trip} today={today} onAdd={actions.addBudgetChange} />}
+        {editable && trip.pools.some((p) => p.foreign) && <RateForm trip={trip} today={today} onAdd={actions.addRate} />}
         <Timeline trip={trip} series={series} stats={stats} editable={editable} onEdit={editDate} actions={actions} />
         <div className="card">
           <span className="label">Share and history</span>
@@ -137,6 +141,11 @@ function Summary({ trip, stats, today }: { trip: Trip; stats: TripStats; today: 
               : `${cur} · ${formatMoney(stats.remaining, 0)} left · last day recorded`
             : `${cur} · ${formatMoney(stats.budget, 0)} over ${plural(stats.tripDays, 'day')} · nothing recorded yet`}
         </div>
+        {localLines(trip, stats.perDayLeft, today).map((line) => (
+          <div key={line} className="local">
+            {line}
+          </div>
+        ))}
         <div className="phase small">
           {phase.kind === 'upcoming' && `Starts in ${plural(phase.inDays, 'day')}`}
           {phase.kind === 'active' && `Today is day ${dayNumber(trip.startDate, today)} of ${stats.tripDays}`}
@@ -171,6 +180,22 @@ function Summary({ trip, stats, today }: { trip: Trip; stats: TripStats; today: 
       </div>
     </>
   );
+}
+
+/**
+ * The headline in each local currency the trip uses ("≈ 14,600 JPY a day"),
+ * at today's rate for the first pool holding that currency.
+ */
+function localLines(trip: Trip, perDayLeft: number, today: string): string[] {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const pool of trip.pools) {
+    if (!pool.foreign || seen.has(pool.foreign.currency)) continue;
+    seen.add(pool.foreign.currency);
+    const rate = rateOn(pool.foreign, clampDate(today, trip.startDate, trip.endDate));
+    lines.push(`≈ ${formatMoney(toPoolCents(rate, perDayLeft), 0)} ${pool.foreign.currency} a day at the ${pool.name} rate`);
+  }
+  return lines;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -271,7 +296,7 @@ function BudgetChangeForm({ trip, today, onAdd }: { trip: Trip; today: string; o
           Remove money
         </button>
       </div>
-      <div className="grid2 tight">
+      <div className="grid2 tight dates">
         <label className="field">
           <span className="label">Amount</span>
           <input inputMode="decimal" value={amount} placeholder="e.g. 500" onChange={(e) => setAmount(e.target.value)} />
@@ -301,9 +326,103 @@ function BudgetChangeForm({ trip, today, onAdd }: { trip: Trip; today: string; o
   );
 }
 
+function RateForm({ trip, today, onAdd }: { trip: Trip; today: string; onAdd: (poolId: string, r: Rate) => Promise<boolean> }) {
+  const foreignPools = trip.pools.filter((p) => p.foreign);
+  const [open, setOpen] = useState(false);
+  const [poolId, setPoolId] = useState(foreignPools[0]?.id ?? '');
+  const [paid, setPaid] = useState('');
+  const [got, setGot] = useState('');
+  const [date, setDate] = useState(() => clampDate(today, trip.startDate, trip.endDate));
+  const [note, setNote] = useState('');
+  const [problems, setProblems] = useState<string[]>([]);
+  const pool = foreignPools.find((p) => p.id === poolId) ?? foreignPools[0];
+
+  if (!open || !pool?.foreign) {
+    return (
+      <button className="ghost wide cardgap" onClick={() => setOpen(true)}>
+        Add exchange rate
+      </button>
+    );
+  }
+  const poolCurrency = pool.foreign.currency;
+  const paidIn = parseAmount(paid);
+  const gotIn = parseAmount(got);
+  const preview: Rate | null =
+    paidIn.ok && gotIn.ok && paidIn.cents > 0 && gotIn.cents > 0
+      ? { id: '', date, paid: paidIn.cents, got: gotIn.cents, note: '' }
+      : null;
+
+  async function save() {
+    const rate: Rate = { id: newId(), date, paid: paidIn.ok ? paidIn.cents : 0, got: gotIn.ok ? gotIn.cents : 0, note };
+    const found = [
+      ...(paidIn.ok ? [] : [`Paid: ${paidIn.error}`]),
+      ...(gotIn.ok ? [] : [`Got: ${gotIn.error}`]),
+      ...(paidIn.ok && gotIn.ok ? rateProblems(rate) : []),
+    ];
+    setProblems(found);
+    if (found.length) return;
+    if (await onAdd(pool!.id, rate)) {
+      setOpen(false);
+      setPaid('');
+      setGot('');
+      setNote('');
+    }
+  }
+
+  return (
+    <div className="card">
+      <span className="label">Add exchange rate</span>
+      {foreignPools.length > 1 && (
+        <div className="segmented" style={{ gridTemplateColumns: `repeat(${foreignPools.length}, 1fr)` }}>
+          {foreignPools.map((p) => (
+            <button key={p.id} className={p.id === pool.id ? 'on' : ''} onClick={() => setPoolId(p.id)}>
+              {p.name} · {p.foreign!.currency}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="grid2 tight">
+        <label className="field">
+          <span className="label">Paid ({trip.currency})</span>
+          <input inputMode="decimal" value={paid} placeholder="e.g. 312.40" onChange={(e) => setPaid(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="label">Got ({poolCurrency})</span>
+          <input inputMode="decimal" value={got} placeholder="e.g. 30000" onChange={(e) => setGot(e.target.value)} />
+        </label>
+      </div>
+      <div className="grid2 tight dates">
+        <label className="field">
+          <span className="label">From date</span>
+          <input type="date" value={date} min={trip.startDate} max={trip.endDate} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="label">Note</span>
+          <input value={note} maxLength={LIMITS.noteLength} placeholder="e.g. ATM in Kyoto" onChange={(e) => setNote(e.target.value)} />
+        </label>
+      </div>
+      <p className="small">
+        {preview ? <b>{rateText(preview, poolCurrency, trip.currency)}. </b> : null}
+        Use a cash withdrawal: the amount your bank feed shows, and the {poolCurrency} you got. Fees are included, so it’s your
+        real rate. It applies from this date on; earlier days keep their rate.
+      </p>
+      <Problems items={problems} />
+      <div className="rowbtns">
+        <button className="btn" onClick={save}>
+          Save
+        </button>
+        <button className="ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type TimelineItem =
   | { kind: 'entry'; date: string; entry: DayEntry; point: SpendPoint }
   | { kind: 'change'; date: string; change: BudgetChange }
+  | { kind: 'rate'; date: string; pool: Pool; rate: Rate }
   | { kind: 'missing'; date: string };
 
 function Timeline({
@@ -324,9 +443,12 @@ function Timeline({
   const items: TimelineItem[] = [
     ...trip.entries.map((entry, i): TimelineItem => ({ kind: 'entry', date: entry.date, entry, point: series[i]! })),
     ...trip.budgetChanges.map((change): TimelineItem => ({ kind: 'change', date: change.date, change })),
+    ...trip.pools.flatMap((pool) =>
+      (pool.foreign?.rates ?? []).map((rate): TimelineItem => ({ kind: 'rate', date: rate.date, pool, rate })),
+    ),
     ...stats.missingDates.map((date): TimelineItem => ({ kind: 'missing', date })),
   ];
-  const order = { change: 0, entry: 1, missing: 1 };
+  const order = { change: 0, rate: 0, entry: 1, missing: 1 };
   items.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : order[a.kind] - order[b.kind]));
   if (!items.length) return null;
   const cur = trip.currency;
@@ -359,6 +481,32 @@ function Timeline({
             </div>
           );
         }
+        if (item.kind === 'rate') {
+          const { pool, rate } = item;
+          const poolCurrency = pool.foreign!.currency;
+          return (
+            <div key={rate.id} className="entry">
+              <div className="entry-main">
+                <div>
+                  <span className="daytag money">RATE</span>
+                  <span className="small">{formatDate(rate.date)}</span>
+                </div>
+                <b>
+                  {pool.name}: {formatMoney(rate.paid)} {cur} for {formatMoney(rate.got)} {poolCurrency}
+                </b>
+                <div className="small">
+                  {rateText(rate, poolCurrency, cur)}
+                  {rate.note && ` · ${rate.note}`}
+                </div>
+              </div>
+              {editable && pool.foreign!.rates.length > 1 && (
+                <div className="rowbtns">
+                  <ConfirmButton label="Delete" confirmLabel="Delete?" onConfirm={() => actions.deleteRate(pool, rate)} />
+                </div>
+              )}
+            </div>
+          );
+        }
         if (item.kind === 'missing') {
           return (
             <div key={`missing-${item.date}`} className="entry missing">
@@ -380,18 +528,20 @@ function Timeline({
           );
         }
         const { entry, point } = item;
-        const total = entryTotal(entry);
+        const total = entryTotal(trip, entry);
         const all = Object.values(entry.amounts).flat();
-        const decimals = all.some((a) => a.cents % 100 !== 0) ? 2 : 0; // "44.00 + 99.50", not "44 + 99.50"
         const parts = trip.pools
           .filter((p) => (entry.amounts[p.id] ?? []).length)
           .map((p) => {
-            const list = (entry.amounts[p.id] ?? [])
-              .map((a) => `${formatMoney(a.cents, decimals)}${a.note ? ` ${a.note}` : ''}`)
-              .join(' + ');
-            return multi ? `${p.name}: ${list}` : list;
+            const amounts = entry.amounts[p.id] ?? [];
+            const decimals = amounts.some((a) => a.cents % 100 !== 0) ? 2 : 0; // "44.00 + 99.50", not "44 + 99.50"
+            const list = amounts.map((a) => `${formatMoney(a.cents, decimals)}${a.note ? ` ${a.note}` : ''}`).join(' + ');
+            if (!p.foreign) return multi ? `${p.name}: ${list}` : list;
+            // "Cash (JPY): 2,400 Dinner = 24.49 AUD"
+            const converted = formatMoney(toTripCents(p, poolTotal(entry, p.id), entry.date));
+            return `${multi ? `${p.name} (${p.foreign.currency})` : p.foreign.currency}: ${list} = ${converted} ${cur}`;
           });
-        const showBreakdown = multi || all.length > 1 || all.some((a) => a.note);
+        const showBreakdown = multi || all.length > 1 || all.some((a) => a.note) || trip.pools.some((p) => p.foreign);
         return (
           <div key={entry.date} className="entry">
             <div className="entry-main">

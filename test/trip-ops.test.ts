@@ -37,8 +37,8 @@ describe('trip settings', () => {
       endDate: '2026-10-01',
       startingBudget: 0,
       pools: [
-        { id: 'a', name: 'Cash' },
-        { id: 'b', name: 'cash' },
+        { id: 'a', name: 'Cash', foreign: null },
+        { id: 'b', name: 'cash', foreign: null },
       ],
     });
     expect(problems).toEqual([
@@ -59,8 +59,8 @@ describe('trip settings', () => {
   it('refuses changes that would strand recorded data', () => {
     const trip = makeTrip({
       pools: [
-        { id: 'pool-a', name: 'Cash' },
-        { id: 'pool-b', name: 'Card' },
+        { id: 'pool-a', name: 'Cash', foreign: null },
+        { id: 'pool-b', name: 'Card', foreign: null },
       ],
       entries: [entry('2026-11-08', [100], [50])],
     });
@@ -89,7 +89,7 @@ describe('entries', () => {
   });
 
   it('drops empty pools and trims notes', () => {
-    const trip = makeTrip({ pools: [{ id: 'pool-a', name: 'A' }, { id: 'pool-b', name: 'B' }] });
+    const trip = makeTrip({ pools: [{ id: 'pool-a', name: 'A', foreign: null }, { id: 'pool-b', name: 'B', foreign: null }] });
     const saved = putEntry(trip, { date: '2026-11-01', amounts: { 'pool-a': [{ cents: 5, note: ' Tea ' }], 'pool-b': [] } }, META);
     expect(saved.entries[0]!.amounts).toEqual({ 'pool-a': [{ cents: 5, note: 'Tea' }] });
   });

@@ -168,6 +168,8 @@ input:focus {
   border-color: var(--green);
 }
 input[type='date'] {
+  display: block;
+  max-width: 100%;
   font-variant-numeric: tabular-nums;
 }
 
@@ -338,14 +340,27 @@ input[type='date'] {
 }
 
 /* ---- trip form ---- */
+/* minmax(0, 1fr): columns stay equal even when a field (a date box, say)
+   won't shrink to fit, so a pair can never push past the screen edge. */
 .grid2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   margin-bottom: 13px;
 }
+.grid2 > * {
+  min-width: 0;
+}
 .grid2.tight {
   margin-bottom: 0;
+}
+/* Date boxes need about 150px for "27/10/2026" and the picker button; on a
+   phone two of them don't fit side by side, so pairs with a date stack. */
+@media (max-width: 440px) {
+  .grid2.dates {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+  }
 }
 .choice {
   display: flex;
@@ -371,9 +386,39 @@ input[type='date'] {
   accent-color: var(--green);
 }
 .poolrow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 86px 38px;
   gap: 8px;
   margin-bottom: 8px;
+}
+.poolrow.head {
+  margin-bottom: 2px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+.poolrow .cur {
+  text-transform: uppercase;
+}
+.poolblock {
+  margin-bottom: 4px;
+}
+.firstrate {
+  margin: -2px 0 10px;
+  padding: 10px;
+  border-left: 4px solid var(--yellow);
+  background: #fffbea;
+  border-radius: 6px;
+}
+.firstrate p {
+  margin: 6px 0 0;
+}
+.raterow {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
 }
 
 /* ---- summary ---- */
@@ -391,6 +436,13 @@ input[type='date'] {
 }
 .bignum.neg {
   color: var(--red);
+}
+.local {
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 .phase {
   margin-top: 4px;
@@ -488,6 +540,21 @@ input[type='date'] {
   border-bottom: 2px solid var(--yellow);
   padding-bottom: 3px;
   margin-bottom: 8px;
+}
+.poolcur {
+  color: var(--green);
+}
+.poolfoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.hint {
+  margin: 10px 0 0;
+  padding-left: 8px;
+  border-left: 3px solid var(--yellow);
 }
 .amountrow {
   display: grid;

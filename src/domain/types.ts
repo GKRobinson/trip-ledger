@@ -19,10 +19,38 @@ export interface Amount {
   note: string;
 }
 
-/** Where money sits (cash, a card...). Pools add up to one budget. */
+/**
+ * Where money sits (cash, a card...). Pools add up to one budget, in the
+ * trip's currency. A pool can hold another currency — local cash, say — and
+ * its amounts are then converted at the pool's rates.
+ */
 export interface Pool {
   id: string;
   name: string;
+  /** Null when the pool holds the trip's own currency. */
+  foreign: ForeignCurrency | null;
+}
+
+export interface ForeignCurrency {
+  /** Display label, e.g. "JPY". */
+  currency: string;
+  /** At least one, sorted by date. See `rateOn` in currency.ts. */
+  rates: Rate[];
+}
+
+/**
+ * An exchange rate as it's actually seen: what was paid in the trip's
+ * currency for an amount of the pool's currency — typically a cash
+ * withdrawal, so fees are included. Applies from `date` on.
+ */
+export interface Rate {
+  id: string;
+  date: IsoDate;
+  /** In the trip's currency. Above zero. */
+  paid: Cents;
+  /** In the pool's currency. Above zero. */
+  got: Cents;
+  note: string;
 }
 
 /**

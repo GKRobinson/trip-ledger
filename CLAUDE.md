@@ -25,9 +25,10 @@ It is deliberately small. Don't grow it into an itemised expense tracker
 
 | Concept | Behaviour |
 |---|---|
-| Trip | Permanent random `id`, name, currency label (display only, no conversion), start/end date (length counts both), starting budget, pools, entries, budget changes. |
+| Trip | Permanent random `id`, name, home currency (the budget's), start/end date (length counts both), starting budget, pools, entries, budget changes. |
 | Recording method | Chosen per trip, locked once it has entries: **running total** (total spent so far), **money left** (what's left), **daily spend** (spent that day). `spendSeries` in `src/domain/stats.ts` is the one place they're interpreted — each reduces to "total spent by this date". |
 | Pools | Where money sits (cash, a card). Added together into one budget; each day's form has a section per pool. Not separate budgets. |
+| Currencies | A pool is either in the home currency (`foreign: null` — card payments, as the bank feed shows them) or in another currency (local cash) with **dated rates**. A rate is entered as *what you paid* (home) *for what you got* (local), usually a cash withdrawal, so fees are included. It applies from its date on; the earliest rate also covers days before it (`rateOn` in `currency.ts`). Never fetched — the app is offline. Amounts are stored as typed, in the pool's currency, and converted per pool per day when totalled (`entryTotal`). The headline also shows "≈ N JPY a day" per local currency. Cash withdrawals are transfers, not spending — the entry form says so. |
 | Amounts | A pool's figure for a day can be several amounts (receipts, accounts) added up, each with an optional note. Stored exactly as typed. |
 | Budget changes | Dated additions/removals. The budget *on a date* counts only changes up to that date — that keeps money-left trips right after a top-up. Editing the starting budget in settings is for fixing mistakes. |
 | Sharing | Export writes one trip to a `.tripledger.json` file (share sheet on Android, Save dialog on desktop). Import (file picker) of an unknown trip id adds it; a known id **replaces** your copy after a preview. There is no merge — deliberately. |
@@ -42,6 +43,7 @@ src/domain/     Pure logic, no I/O — everything here is unit-tested
   types.ts        Data model
   dates.ts        "YYYY-MM-DD" calendar dates (never timestamps)
   money.ts        Integer cents; parsing what people type
+  currency.ts     Pool rates: rate for a date, conversion, "1 AUD = 96.03 JPY"
   stats.ts        Methods → spend series → headline figures
   trip-ops.ts     Edits (each returns a new Trip) and validation
   versions.ts     Version history and switching
@@ -74,7 +76,11 @@ scripts/        make-icons.cjs (draws icons with Electron; no image library)
    A `.tmp` with no `.json` beside it is recovered on read.
 6. **Money is integer cents; dates are `YYYY-MM-DD` strings.** No floats in
    stored amounts, no timestamps for calendar days (time zones shift them).
-7. **All state changes in `App.tsx` go through `serial`/`update`**, which read
+   Amounts are stored in their pool's currency and converted only when totalled
+   — never store a converted figure, or a corrected rate can't fix it.
+7. **A pool with amounts recorded can't change currency**, and a foreign pool
+   always keeps at least one rate — otherwise stored amounts lose their meaning.
+8. **All state changes in `App.tsx` go through `serial`/`update`**, which read
    the latest saved record — so two quick taps can't drop an edit.
 
 ## Commands

@@ -1,9 +1,10 @@
+import { rateText } from './currency';
 import { formatDate, type IsoDate } from './dates';
 import type { TripFile } from './file-format';
-import { formatMoney } from './money';
-import { addVersion, newRecord, sameContent } from './versions';
-import type { BudgetChange, DayEntry, Trip, TripRecord } from './types';
 import { METHOD_TITLES } from './labels';
+import { formatMoney } from './money';
+import type { BudgetChange, DayEntry, Pool, Trip, TripRecord } from './types';
+import { addVersion, newRecord, sameContent } from './versions';
 
 /** A trip-level setting that the import would change, ready to display. */
 export interface FieldChange {
@@ -54,8 +55,20 @@ function fieldChanges(from: Trip, to: Trip): FieldChange[] {
   add('Currency', from.currency, to.currency);
   add('Starting budget', formatMoney(from.startingBudget), formatMoney(to.startingBudget));
   add('Recording method', METHOD_TITLES[from.method], METHOD_TITLES[to.method]);
-  add('Pools', from.pools.map((p) => p.name).join(', '), to.pools.map((p) => p.name).join(', '));
+  const poolLabel = (p: Pool) => (p.foreign ? `${p.name} (${p.foreign.currency})` : p.name);
+  add('Pools', from.pools.map(poolLabel).join(', '), to.pools.map(poolLabel).join(', '));
+  add('Exchange rates', ratesSummary(from), ratesSummary(to));
   return changes;
+}
+
+function ratesSummary(trip: Trip): string {
+  return trip.pools
+    .flatMap((p) =>
+      p.foreign
+        ? [`${p.name}: ${p.foreign.rates.map((r) => `${rateText(r, p.foreign!.currency, trip.currency)} from ${formatDate(r.date)}`).join('; ')}`]
+        : [],
+    )
+    .join(' · ');
 }
 
 export function previewImport(existing: Trip | null, file: TripFile, installId: string): ImportPreview {

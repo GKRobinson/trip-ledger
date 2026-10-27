@@ -1,6 +1,6 @@
 import { formatDate, isIsoDate, tripLength, type IsoDate } from './dates';
 import { isCents, type Cents } from './money';
-import type { Amount, BudgetChange, DayEntry, EditMeta, Method, Pool, Trip } from './types';
+import type { Amount, BudgetChange, DayEntry, EditMeta, Method, Pool, Rate, Trip } from './types';
 
 /**
  * Pure edits on a trip: each returns a new Trip and never mutates its input.
@@ -55,14 +55,29 @@ export function settingsProblems(input: TripSettingsInput, existing?: Trip): str
   if (poolNames.some((n) => n.length > LIMITS.poolNameLength)) problems.push(`Keep pool names under ${LIMITS.poolNameLength} characters.`);
   if (new Set(poolNames.map((n) => n.toLowerCase())).size !== poolNames.length) problems.push('Two pools have the same name.');
 
+  for (const pool of input.pools) {
+    if (!pool.foreign) continue;
+    const name = pool.name.trim() || 'A pool';
+    const label = pool.foreign.currency.trim();
+    if (!label || label.length > LIMITS.currencyLength) problems.push(`Give “${name}” a currency label of up to ${LIMITS.currencyLength} characters.`);
+    else if (label.toUpperCase() === currency.toUpperCase()) {
+      problems.push(`“${name}” is in ${label.toUpperCase()}, the trip’s own currency, so it needs no exchange rate.`);
+    }
+    if (pool.foreign.rates.length === 0) problems.push(`“${name}” needs an exchange rate: what you paid for what you got.`);
+    for (const rate of pool.foreign.rates) problems.push(...rateProblems(rate).map((p) => `“${name}”: ${p}`));
+  }
+
   if (existing) {
     if (input.method !== existing.method && existing.entries.length > 0) {
       problems.push('The recording method can’t change once the trip has entries.');
     }
-    const kept = new Set(input.pools.map((p) => p.id));
+    const currencyOf = (p: Pool) => (p.foreign ? p.foreign.currency.trim().toUpperCase() : null);
     for (const pool of existing.pools) {
-      if (!kept.has(pool.id) && existing.entries.some((e) => (e.amounts[pool.id] ?? []).length > 0)) {
-        problems.push(`“${pool.name}” has amounts recorded, so it can’t be removed.`);
+      const used = existing.entries.some((e) => (e.amounts[pool.id] ?? []).length > 0);
+      const next = input.pools.find((p) => p.id === pool.id);
+      if (used && !next) problems.push(`“${pool.name}” has amounts recorded, so it can’t be removed.`);
+      else if (used && next && currencyOf(next) !== currencyOf(pool)) {
+        problems.push(`“${pool.name}” has amounts recorded, so its currency can’t change.`);
       }
     }
     if (datesOk && input.endDate >= input.startDate) {
@@ -81,8 +96,19 @@ function cleanSettings(input: TripSettingsInput): TripSettingsInput {
     ...input,
     name: input.name.trim(),
     currency: input.currency.trim().toUpperCase(),
-    pools: input.pools.map((p) => ({ id: p.id, name: p.name.trim() })),
+    pools: input.pools.map((p) => ({
+      id: p.id,
+      name: p.name.trim(),
+      foreign: p.foreign
+        ? { currency: p.foreign.currency.trim().toUpperCase(), rates: sortByDate(p.foreign.rates.map((r) => ({ ...r, note: r.note.trim() }))) }
+        : null,
+    })),
   };
+}
+
+/** Stable: items on the same date keep the order they were added. */
+function sortByDate<T extends { date: IsoDate }>(items: T[]): T[] {
+  return [...items].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
 const stamped = (trip: Trip, meta: EditMeta): Trip => ({ ...trip, updatedAt: meta.now, updatedBy: meta.userName });
@@ -149,10 +175,35 @@ export function budgetChangeProblems(trip: Trip, change: BudgetChange): string[]
 }
 
 export function addBudgetChange(trip: Trip, change: BudgetChange, meta: EditMeta): Trip {
-  const budgetChanges = [...trip.budgetChanges, { ...change, note: change.note.trim() }];
-  // Stable sort: changes on the same date keep the order they were added.
-  budgetChanges.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const budgetChanges = sortByDate([...trip.budgetChanges, { ...change, note: change.note.trim() }]);
   return stamped({ ...trip, budgetChanges }, meta);
+}
+
+/** Problems with an exchange rate on its own (the pool is checked by callers). */
+export function rateProblems(rate: Rate): string[] {
+  const problems: string[] = [];
+  if (!isIsoDate(rate.date)) problems.push('Choose the date the rate applies from.');
+  if (!isCents(rate.paid) || rate.paid <= 0) problems.push('Enter what you paid, above zero.');
+  if (!isCents(rate.got) || rate.got <= 0) problems.push('Enter what you got, above zero.');
+  if (rate.note.trim().length > LIMITS.noteLength) problems.push(`Keep the note under ${LIMITS.noteLength} characters.`);
+  return problems;
+}
+
+function withRates(trip: Trip, poolId: string, change: (rates: Rate[]) => Rate[], meta: EditMeta): Trip {
+  const pools = trip.pools.map((p) =>
+    p.id === poolId && p.foreign ? { ...p, foreign: { ...p.foreign, rates: sortByDate(change(p.foreign.rates)) } } : p,
+  );
+  return stamped({ ...trip, pools }, meta);
+}
+
+/** Callers check `rateProblems` first. */
+export function addRate(trip: Trip, poolId: string, rate: Rate, meta: EditMeta): Trip {
+  return withRates(trip, poolId, (rates) => [...rates, { ...rate, note: rate.note.trim() }], meta);
+}
+
+/** A pool in another currency keeps at least one rate; removing its last one does nothing. */
+export function removeRate(trip: Trip, poolId: string, rateId: string, meta: EditMeta): Trip {
+  return withRates(trip, poolId, (rates) => (rates.length > 1 ? rates.filter((r) => r.id !== rateId) : rates), meta);
 }
 
 export function removeBudgetChange(trip: Trip, id: string, meta: EditMeta): Trip {

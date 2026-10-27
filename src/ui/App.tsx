@@ -6,10 +6,12 @@ import { applyImport, previewImport, type ImportPreview } from '../domain/import
 import { sampleTrips } from '../domain/samples';
 import {
   addBudgetChange,
+  addRate,
   createTrip,
   putEntry,
   removeBudgetChange,
   removeEntry,
+  removeRate,
   takeOverEditing,
   updateSettings,
   type TripSettingsInput,
@@ -242,6 +244,12 @@ export function App({
         void edit(id, (t, m) => removeBudgetChange(t, change.id, m), {
           kind: 'beforeDelete',
           detail: `the ${signedMoney(change.cents)} budget change`,
+        }),
+      addRate: (poolId, rate) => edit(id, (t, m) => addRate(t, poolId, rate, m)),
+      deleteRate: (pool, rate) =>
+        void edit(id, (t, m) => removeRate(t, pool.id, rate.id, m), {
+          kind: 'beforeDelete',
+          detail: `the ${pool.name} rate from ${formatDate(rate.date)}`,
         }),
       exportTrip: () => void exportTrip(id),
       startEditing: () =>

@@ -2,7 +2,8 @@ import { forwardRef, useEffect, useRef, useState } from 'react';
 import { entryWarnings } from '../domain/checks';
 import { dayNumber, formatDate, isIsoDate } from '../domain/dates';
 import { centsToInput, formatMoney, parseAmount } from '../domain/money';
-import { spendSeries } from '../domain/stats';
+import { toTripCents } from '../domain/currency';
+import { entryTotal, poolTotal, spendSeries } from '../domain/stats';
 import { LIMITS, entryProblems, putEntry } from '../domain/trip-ops';
 import type { Amount, DayEntry, Trip } from '../domain/types';
 import { Problems, Warnings } from './common';
@@ -95,8 +96,9 @@ export const EntryForm = forwardRef<
   const info = METHOD_INFO[trip.method];
   const dateOk = isIsoDate(date) && date >= trip.startDate && date <= trip.endDate;
   const { amounts, errors } = readRows(state.rows);
-  const total = Object.values(amounts).flat().reduce((s, a) => s + a.cents, 0);
   const candidate: DayEntry = { date, amounts };
+  const total = entryTotal(trip, candidate);
+  const anyForeign = trip.pools.some((p) => p.foreign);
   const hasAmounts = Object.values(amounts).some((l) => l.length > 0);
   const spentBy = dateOk && hasAmounts
     ? spendSeries(putEntry(trip, candidate, { now: 0, userName: '' })).find((p) => p.date === date)?.spent
@@ -138,9 +140,15 @@ export const EntryForm = forwardRef<
 
       {trip.pools.map((pool) => {
         const rows = state.rows[pool.id] ?? [];
+        const typed = poolTotal(candidate, pool.id);
         return (
           <div key={pool.id} className="pool">
-            {multi && <div className="poolname">{pool.name}</div>}
+            {(multi || pool.foreign) && (
+              <div className="poolname">
+                {pool.name}
+                {pool.foreign && <span className="poolcur"> · {pool.foreign.currency}</span>}
+              </div>
+            )}
             {rows.map((r) => (
               <div key={r.key} className={'amountrow' + (errors.has(r.key) ? ' bad' : '')}>
                 <input
@@ -170,22 +178,29 @@ export const EntryForm = forwardRef<
                 {errors.has(r.key) && <span className="rowerr">{errors.get(r.key)}</span>}
               </div>
             ))}
-            <button
-              className="link"
-              onClick={() => {
-                const next = row();
-                focusKey.current = next.key;
-                setRows(pool.id, (list) => [...list, next]);
-              }}
-            >
-              + Add amount
-            </button>
+            <div className="poolfoot">
+              <button
+                className="link"
+                onClick={() => {
+                  const next = row();
+                  focusKey.current = next.key;
+                  setRows(pool.id, (list) => [...list, next]);
+                }}
+              >
+                + Add amount
+              </button>
+              {pool.foreign && typed !== 0 && (
+                <span className="small">
+                  {formatMoney(typed)} {pool.foreign.currency} = {formatMoney(toTripCents(pool, typed, date))} {trip.currency}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
 
       <div className="totalrow">
-        <span>{multi ? 'Total, all pools' : 'Total'}</span>
+        <span>{multi ? `Total, all pools${anyForeign ? ` in ${trip.currency}` : ''}` : 'Total'}</span>
         <b>
           {formatMoney(total)} {trip.currency}
         </b>
@@ -200,6 +215,13 @@ export const EntryForm = forwardRef<
       )}
       <Warnings items={warnings} />
       <Problems items={problems} />
+      {anyForeign && (
+        <p className="small hint">
+          {trip.method === 'moneyLeft'
+            ? 'After a cash withdrawal, update both pools and add the withdrawal as an exchange rate.'
+            : 'Cash withdrawals aren’t spending: enter what you spend from the cash, not the withdrawal itself.'}
+        </p>
+      )}
       <button className="btn mt" onClick={save}>
         {savedEntry ? 'Save changes' : 'Save'}
       </button>

@@ -8,8 +8,10 @@ import {
   type Amount,
   type BudgetChange,
   type DayEntry,
+  type ForeignCurrency,
   type Method,
   type Pool,
+  type Rate,
   type Trip,
   type TripRecord,
   type Version,
@@ -90,9 +92,33 @@ function oneOf<T extends string>(v: unknown, options: readonly T[], path: string
   return v as T;
 }
 
+function readRate(v: unknown, path: string): Rate {
+  const o = obj(v, path);
+  const paid = cents(o.paid, `${path}.paid`);
+  const got = cents(o.got, `${path}.got`);
+  if (paid <= 0) fail(`${path}.paid`, 'is not above zero');
+  if (got <= 0) fail(`${path}.got`, 'is not above zero');
+  return {
+    id: id(o.id, `${path}.id`),
+    date: date(o.date, `${path}.date`),
+    paid,
+    got,
+    note: str(o.note, `${path}.note`, LIMITS.noteLength),
+  };
+}
+
 function readPool(v: unknown, path: string): Pool {
   const o = obj(v, path);
-  return { id: id(o.id, `${path}.id`), name: str(o.name, `${path}.name`, LIMITS.poolNameLength, true) };
+  let foreign: ForeignCurrency | null = null;
+  if (o.foreign !== null) {
+    const f = obj(o.foreign, `${path}.foreign`);
+    const rates = arr(f.rates, `${path}.foreign.rates`).map((r, i) => readRate(r, `${path}.foreign.rates[${i}]`));
+    if (rates.length === 0) fail(`${path}.foreign.rates`, 'is empty');
+    if (new Set(rates.map((r) => r.id)).size !== rates.length) fail(`${path}.foreign.rates`, 'has a repeated id');
+    rates.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    foreign = { currency: str(f.currency, `${path}.foreign.currency`, LIMITS.currencyLength, true), rates };
+  }
+  return { id: id(o.id, `${path}.id`), name: str(o.name, `${path}.name`, LIMITS.poolNameLength, true), foreign };
 }
 
 function readAmount(v: unknown, path: string): Amount {

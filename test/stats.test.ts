@@ -27,8 +27,8 @@ describe('money left', () => {
   const trip = makeTrip({
     method: 'moneyLeft',
     pools: [
-      { id: 'pool-a', name: 'Cash' },
-      { id: 'pool-b', name: 'Card' },
+      { id: 'pool-a', name: 'Cash', foreign: null },
+      { id: 'pool-b', name: 'Card', foreign: null },
     ],
     budgetChanges: [{ id: 'c1', date: '2026-11-03', cents: 20_000, note: 'Gift' }],
     entries: [entry('2026-11-01', [90_000]), entry('2026-11-03', [60_000], [40_000])],

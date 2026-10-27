@@ -17,13 +17,13 @@ export function entryWarnings(trip: Trip, date: IsoDate, total: Cents, today: Is
 
   switch (trip.method) {
     case 'runningTotal':
-      if (prev && entryTotal(prev) > total) {
+      if (prev && entryTotal(trip, prev) > total) {
         warnings.push(
-          `Lower than your total on ${formatDate(prev.date)} (${money(entryTotal(prev))}). Fine if it was a refund.`,
+          `Lower than your total on ${formatDate(prev.date)} (${money(entryTotal(trip, prev))}). Fine if it was a refund.`,
         );
       }
-      if (next && entryTotal(next) < total) {
-        warnings.push(`Higher than your total on ${formatDate(next.date)} (${money(entryTotal(next))}).`);
+      if (next && entryTotal(trip, next) < total) {
+        warnings.push(`Higher than your total on ${formatDate(next.date)} (${money(entryTotal(trip, next))}).`);
       }
       break;
     case 'moneyLeft':
@@ -31,9 +31,9 @@ export function entryWarnings(trip: Trip, date: IsoDate, total: Cents, today: Is
         const added = trip.budgetChanges
           .filter((c) => c.date > prev.date && c.date <= date)
           .reduce((sum, c) => sum + c.cents, 0);
-        if (total > entryTotal(prev) + added) {
+        if (total > entryTotal(trip, prev) + added) {
           warnings.push(
-            `More than you had left on ${formatDate(prev.date)} (${money(entryTotal(prev))})` +
+            `More than you had left on ${formatDate(prev.date)} (${money(entryTotal(trip, prev))})` +
               `${added ? ' plus money added since' : ''}. If money was added, record it under ` +
               `“Add or remove money” so your spending stays right.`,
           );

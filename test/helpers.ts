@@ -18,7 +18,7 @@ export function makeTrip(overrides: Partial<Trip> = {}): Trip {
     endDate: '2026-11-10',
     method: 'runningTotal',
     startingBudget: 100_000,
-    pools: [{ id: 'pool-a', name: 'Main' }],
+    pools: [{ id: 'pool-a', name: 'Main', foreign: null }],
     budgetChanges: [],
     entries: [],
     editorInstallId: ME,

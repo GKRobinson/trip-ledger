@@ -62,7 +62,7 @@ describe('versions', () => {
 
   it('treats content as the same regardless of key order or edit stamps', () => {
     const a = makeTrip();
-    const b = JSON.parse(JSON.stringify({ ...a, updatedAt: 999, updatedBy: 'Sam' }, Object.keys(a).reverse()));
+    const b = Object.fromEntries(Object.entries({ ...a, updatedAt: 999, updatedBy: 'Sam' }).reverse()) as unknown as typeof a;
     expect(sameContent(a, b)).toBe(true);
     expect(sameContent(a, { ...a, name: 'Other' })).toBe(false);
   });

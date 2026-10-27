@@ -26,11 +26,11 @@ export function sampleTrips(today: IsoDate, installId: string, meta: EditMeta, n
   const running: Trip = {
     ...base,
     id: newId(),
-    name: 'Sample · Japan (running total)',
+    name: 'Sample · Road trip (running total)',
     currency: 'AUD',
     method: 'runningTotal',
     startingBudget: 400_000,
-    pools: [{ id: main, name: 'Spending' }],
+    pools: [{ id: main, name: 'Spending', foreign: null }],
     budgetChanges: [],
     entries: runningTotals.map((cents, i) => ({ date: day(i + 1), amounts: { [main]: amounts(cents) } })),
   };
@@ -50,39 +50,60 @@ export function sampleTrips(today: IsoDate, installId: string, meta: EditMeta, n
     method: 'moneyLeft',
     startingBudget: 600_000,
     pools: [
-      { id: cash, name: 'Cash' },
-      { id: card, name: 'Card' },
+      { id: cash, name: 'Cash', foreign: null },
+      { id: card, name: 'Card', foreign: null },
     ],
     budgetChanges: [{ id: newId(), date: day(6), cents: 50_000, note: 'Birthday money' }],
     entries: left.map(([c, k], i) => ({ date: day(i + 1), amounts: { [cash]: amounts(c), [card]: amounts(k) } })),
   };
 
-  // Daily spend: receipts added up each day, with day 7 not recorded.
-  const wallet = newId();
-  const receipts: Array<Array<number | [number, string]>> = [
-    [[4_520, 'Breakfast'], [12_000, 'Fuel'], [8_650, 'Dinner']],
-    [[3_200, 'Coffee'], [9_900, 'Camp site']],
-    [[15_480, 'Groceries'], [2_500, 'Parking']],
-    [[6_000, 'Museum'], [7_340, 'Lunch'], [11_000, 'Fuel']],
-    [[9_900, 'Camp site'], [4_150, 'Dinner']],
-    [[2_890, 'Snacks']],
-    [],
-    [[18_700, 'Motel'], [5_600, 'Dinner']],
-    [[13_200, 'Fuel'], [3_000, 'Ferry']],
-    [[8_800, 'Groceries']],
-    [[4_400, 'Coffee'], [9_950, 'Tour']],
+  // Daily spend in two currencies: card payments in AUD from the bank feed,
+  // cash receipts in yen at the rate two ATM withdrawals actually cost.
+  // Day 7 has no entry.
+  const jpCard = newId();
+  const jpCash = newId();
+  const receipts: Array<[Array<[number, string]>, Array<[number, string]>]> = [
+    [[[18_650, 'Hotel']], [[120_000, 'Ramen'], [48_000, 'Train']]],
+    [[[4_500, 'Museum']], [[98_000, 'Lunch'], [32_000, 'Coffee']]],
+    [[], [[250_000, 'Onsen'], [150_000, 'Dinner']]],
+    [[[12_000, 'Shinkansen']], [[80_000, 'Bento']]],
+    [[[18_650, 'Hotel']], [[60_000, 'Temple'], [110_000, 'Dinner']]],
+    [[], [[300_000, 'Market'], [45_000, 'Bus']]],
+    [[], []],
+    [[[9_900, 'Dinner']], [[70_000, 'Breakfast']]],
+    [[[22_000, 'Day tour']], [[52_000, 'Lunch']]],
+    [[], [[180_000, 'Souvenirs'], [65_000, 'Ramen']]],
+    [[[18_650, 'Hotel']], [[40_000, 'Coffee']]],
   ];
   const daily: Trip = {
     ...base,
     id: newId(),
-    name: 'Sample · Road trip (daily spend)',
+    name: 'Sample · Japan (daily spend)',
     currency: 'AUD',
     method: 'dailySpend',
     startingBudget: 450_000,
-    pools: [{ id: wallet, name: 'Spending' }],
+    pools: [
+      { id: jpCard, name: 'Card', foreign: null },
+      {
+        id: jpCash,
+        name: 'Cash',
+        foreign: {
+          currency: 'JPY',
+          rates: [
+            { id: newId(), date: day(1), paid: 31_240, got: 3_000_000, note: 'ATM at the airport' },
+            { id: newId(), date: day(6), paid: 20_500, got: 2_000_000, note: 'ATM in Kyoto' },
+          ],
+        },
+      },
+    ],
     budgetChanges: [],
     entries: receipts
-      .map((list, i): DayEntry | null => (list.length ? { date: day(i + 1), amounts: { [wallet]: amounts(...list) } } : null))
+      .map(([cardList, cashList], i): DayEntry | null => {
+        const entryAmounts: Record<string, Amount[]> = {};
+        if (cardList.length) entryAmounts[jpCard] = amounts(...cardList);
+        if (cashList.length) entryAmounts[jpCash] = amounts(...cashList);
+        return cardList.length + cashList.length ? { date: day(i + 1), amounts: entryAmounts } : null;
+      })
       .filter((e): e is DayEntry => e !== null),
   };
 

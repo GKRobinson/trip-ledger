@@ -1,16 +1,19 @@
+import { toTripCents } from './currency';
 import { addDays, dayNumber, tripLength, type IsoDate } from './dates';
 import type { Cents } from './money';
 import type { DayEntry, Trip } from './types';
 
-/** Everything typed for a day, added up across pools. */
-export function entryTotal(entry: DayEntry): Cents {
-  let sum = 0;
-  for (const amounts of Object.values(entry.amounts)) for (const a of amounts) sum += a.cents;
-  return sum;
-}
-
+/** What was typed for one pool on a day, in the pool's own currency. */
 export function poolTotal(entry: DayEntry, poolId: string): Cents {
   return (entry.amounts[poolId] ?? []).reduce((sum, a) => sum + a.cents, 0);
+}
+
+/**
+ * Everything typed for a day, in the trip's currency: each pool's amounts are
+ * added up, converted at that pool's rate for the day, then added together.
+ */
+export function entryTotal(trip: Trip, entry: DayEntry): Cents {
+  return trip.pools.reduce((sum, pool) => sum + toTripCents(pool, poolTotal(entry, pool.id), entry.date), 0);
 }
 
 /** Net of all budget changes, whatever their date. */
@@ -48,7 +51,7 @@ export interface SpendPoint {
 export function spendSeries(trip: Trip): SpendPoint[] {
   let running = 0;
   return trip.entries.map((entry) => {
-    const total = entryTotal(entry);
+    const total = entryTotal(trip, entry);
     let spent: Cents;
     switch (trip.method) {
       case 'runningTotal':

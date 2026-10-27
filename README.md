@@ -8,6 +8,9 @@ see how much you can spend per day for the rest of the trip.
 
 - **Offline and private.** Trips are stored on your device. Nothing is sent
   anywhere unless you export a trip file and send it yourself.
+- **Local cash in another currency.** Give a pool its own currency and enter
+  receipts as they're printed; they're converted at what your cash
+  withdrawals actually cost, fees included. No exchange-rate lookups.
 - **Share a trip as a file.** Anyone with the app can import it. If they
   already have that trip, importing replaces their copy, after showing exactly
   what will change.
