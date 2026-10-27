@@ -107,6 +107,10 @@ Linux builds only on Linux — use the GitHub Actions workflow.
    **Build Linux AppImage** (manual `workflow_dispatch` only). Download from the
    run page.
 
+Settings shows the version and the build time (`__BUILD_TIME__`, baked in by
+Vite, shown in the device's local time) — use it to tell test builds that share
+a version apart. Bump the version only for builds meant to install as updates.
+
 Windows builds are unsigned: SmartScreen warns on first run ("More info" →
 "Run anyway"). Accepted for personal use.
 

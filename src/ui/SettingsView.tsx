@@ -3,6 +3,7 @@ import { LIMITS } from '../domain/trip-ops';
 import type { AppSettings } from '../domain/types';
 import type { Platform } from '../platform/platform';
 import { Header } from './common';
+import { formatDateTime } from './format';
 
 export function SettingsView({
   settings,
@@ -76,7 +77,7 @@ export function SettingsView({
         </div>
 
         <p className="small center mute">
-          Trip Ledger {__APP_VERSION__} · {platform.kind}
+          Trip Ledger {__APP_VERSION__} · built {formatDateTime(Date.parse(__BUILD_TIME__))} · {platform.kind}
         </p>
       </main>
     </>

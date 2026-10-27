@@ -37,6 +37,8 @@ export default defineConfig({
   base: './',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // Shown in Settings so test builds that share a version can be told apart.
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   plugins: [contentSecurityPolicy],
   server: {
